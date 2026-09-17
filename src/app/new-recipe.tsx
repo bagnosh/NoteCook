@@ -36,6 +36,7 @@ export default function NewRecipeScreen() {
       if (data.tools) setTools(data.tools.length > 0 ? data.tools : ['']);
       if (data.steps) setSteps(data.steps.length > 0 ? data.steps : ['']);
       if (data.notes) setNotes(data.notes);
+      if (data.photo) setPhoto(data.photo);
     }
   }, [params.prefill]);
 

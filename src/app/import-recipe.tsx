@@ -66,6 +66,7 @@ export default function ImportRecipeScreen() {
                 )],
                 steps: (data.analyzedInstructions?.[0]?.steps ?? []).map((s) => s.step),
                 notes: data.sourceName ? `Source: ${data.sourceName}` : '',
+                photo: data.image ?? null,
             };
 
             // Step 3: Groq enrichment if key is available
@@ -79,7 +80,7 @@ export default function ImportRecipeScreen() {
                             'Authorization': `Bearer ${groqKey}`,
                         },
                         body: JSON.stringify({
-                            model: 'llama3.1-8b-instant',
+                            model: 'groq/compound-mini',
                             messages: [
                                 {
                                     role: 'system',
@@ -110,7 +111,12 @@ Fix awkward phrasing, infer missing tools from steps, ensure steps are clear and
                     if (groqText) {
                         const jsonMatch = groqText.match(/\{[\s\S]*\}/);
                         if (jsonMatch) {
-                            recipe = JSON.parse(jsonMatch[0]);
+                            const groqRecipe = JSON.parse(jsonMatch[0]);
+                            recipe = {
+                                ...groqRecipe,
+                                photo: recipe.photo, // preserve Spoonacular's image URL
+                            };
+                            console.log('After Groq photo:', recipe.photo);
                         }
                     }
                 } catch (e) {
@@ -119,6 +125,7 @@ Fix awkward phrasing, infer missing tools from steps, ensure steps are clear and
                 }
             }
 
+            console.log('Final recipe photo:', recipe.photo);
             // Navigate to new recipe screen with pre-filled data
             router.push({
                 pathname: '/new-recipe' as any,
