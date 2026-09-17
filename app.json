@@ -39,7 +39,15 @@
       "expo-image",
       "expo-web-browser",
       "expo-font",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow NoteCook to access your photos to add them to recipes.",
+          "cameraPermission": "Allow NoteCook to use your camera to photograph recipes.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

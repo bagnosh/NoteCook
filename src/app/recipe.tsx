@@ -1,17 +1,104 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useMemo, useRef, useState } from 'react';
 import {
-  Image, Modal, Pressable,
+  Alert, Image, Modal, Pressable,
   ScrollView, StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
+import { captureRef } from 'react-native-view-shot';
+import UnitConverter from '../components/UnitConverter';
 import { deleteRecipe, updateRecipe } from '../constants/storage';
 import { theme } from '../constants/theme';
 import { Recipe } from '../constants/types';
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function resolvePhotoSrc(photo: string | null): Promise<string | null> {
+  if (!photo) return null;
+  if (photo.startsWith('http://') || photo.startsWith('https://')) return photo;
+  // Local file:// URIs generally aren't loadable inside the native print
+  // WebView, so inline the photo as a base64 data URI instead.
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base64 = await FileSystem.readAsStringAsync(photo, { encoding: 'base64' });
+    const ext = photo.split('.').pop()?.toLowerCase();
+    const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+    return `data:${mime};base64,${base64}`;
+  } catch (e) {
+    console.error('Failed to inline photo for PDF export:', e);
+    return null;
+  }
+}
+
+async function buildRecipeHtml(recipe: Recipe): Promise<string> {
+  const categoriesHtml = recipe.categories.length
+    ? `<div class="categories">${recipe.categories.map(escapeHtml).join(' &bull; ')}</div>`
+    : '';
+
+  const photoSrc = await resolvePhotoSrc(recipe.photo);
+  const photoHtml = photoSrc
+    ? `<img class="photo" src="${photoSrc}" />`
+    : '';
+
+  const ingredientsHtml = recipe.ingredients.length
+    ? `<h2>Ingredients</h2><ul>${recipe.ingredients
+        .map(ing => `<li>${escapeHtml(`${ing.amount} ${ing.unit} ${ing.name}`.trim())}</li>`)
+        .join('')}</ul>`
+    : '';
+
+  const toolsHtml = recipe.tools.length
+    ? `<h2>Tools</h2><ul>${recipe.tools.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`
+    : '';
+
+  const stepsHtml = recipe.steps.length
+    ? `<h2>Steps</h2><ol>${recipe.steps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol>`
+    : '';
+
+  const notesHtml = recipe.notes
+    ? `<h2>Notes</h2><p class="notes">${escapeHtml(recipe.notes)}</p>`
+    : '';
+
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #4D3A2C; padding: 24px; }
+          h1 { color: #6F4E37; margin-bottom: 4px; }
+          .categories { color: #9C8576; margin-bottom: 16px; font-size: 14px; }
+          h2 { color: #D2915A; margin-top: 24px; margin-bottom: 8px; font-size: 18px; border-bottom: 2px solid #E5C39E; padding-bottom: 4px; }
+          ul, ol { margin: 0; padding-left: 20px; }
+          li { margin-bottom: 6px; }
+          .notes { white-space: pre-wrap; }
+          .photo { max-width: 100%; border-radius: 12px; margin: 16px 0; }
+          .footer { margin-top: 32px; text-align: center; color: #9C8576; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(recipe.title)}</h1>
+        ${categoriesHtml}
+        ${photoHtml}
+        ${ingredientsHtml}
+        ${toolsHtml}
+        ${stepsHtml}
+        ${notesHtml}
+        <div class="footer">Exported from NoteCook</div>
+      </body>
+    </html>
+  `;
+}
 
 // ── Checkbox component ──
 function Checkbox({ label, strikethrough }: { label: string; strikethrough?: boolean }) {
@@ -122,9 +209,11 @@ export default function RecipeDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [converterVisible, setConverterVisible] = useState(false);
   const [favourite, setFavourite] = useState<boolean>(
     JSON.parse(params.recipe as string).favourite
   );
+  const exportCardRef = useRef<View>(null);
 
   // Parse recipe from route params
   const recipe: Recipe = JSON.parse(params.recipe as string);
@@ -194,6 +283,35 @@ export default function RecipeDetailScreen() {
     const fileUri = `${(await import('expo-file-system/legacy')).documentDirectory}${filename}`;
     await (await import('expo-file-system/legacy')).writeAsStringAsync(fileUri, text);
     await Sharing.shareAsync(fileUri, { mimeType: 'text/plain' });
+  }
+
+  async function handleExportPdf() {
+    setMenuVisible(false);
+    try {
+      const html = await buildRecipeHtml(recipe);
+      const result = await Print.printToFileAsync({ html });
+      if (!result?.uri) {
+        Alert.alert('Export failed', 'Could not generate a PDF on this device.');
+        return;
+      }
+      await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+    } catch (e) {
+      console.error('Failed to export PDF:', e);
+      const message = e instanceof Error ? e.message : String(e);
+      Alert.alert('Export failed', `Could not generate a PDF on this device.\n\n${message}`);
+    }
+  }
+
+  async function handleExportPng() {
+    setMenuVisible(false);
+    if (!exportCardRef.current) return;
+    try {
+      const uri = await captureRef(exportCardRef.current, { format: 'png', quality: 1 });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png' });
+    } catch (e) {
+      console.error('Failed to export image:', e);
+      Alert.alert('Export failed', 'Could not generate an image on this device.');
+    }
   }
 
   return (
@@ -342,10 +460,97 @@ export default function RecipeDetailScreen() {
               style={styles.menuItem}
               onPress={() => handleExportText()}
             >
-              <Ionicons name="share-social" size={18} color={theme.colors.text} />
+              <Ionicons name="document-text-outline" size={18} color={theme.colors.text} />
               <Text style={styles.menuItemText}>Export as Text</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleExportPdf()}
+            >
+              <Ionicons name="document-outline" size={18} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Export as PDF</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleExportPng()}
+            >
+              <Ionicons name="image-outline" size={18} color={theme.colors.text} />
+              <Text style={styles.menuItemText}>Export as Image</Text>
+            </TouchableOpacity>
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* ── Hidden card used to capture the PNG export -- rendered off-screen ── */}
+      <View style={styles.exportCardWrap} pointerEvents="none">
+        <View ref={exportCardRef} collapsable={false} style={styles.exportCard}>
+          <Text style={styles.exportTitle}>{recipe.title}</Text>
+          {recipe.categories.length > 0 && (
+            <Text style={styles.exportCategories}>{recipe.categories.join(' • ')}</Text>
+          )}
+          {recipe.photo && (
+            <Image source={{ uri: recipe.photo }} style={styles.exportPhoto} />
+          )}
+          {recipe.ingredients.length > 0 && (
+            <>
+              <Text style={styles.exportSectionTitle}>Ingredients</Text>
+              {recipe.ingredients.map((ing, i) => (
+                <Text key={i} style={styles.exportItem}>
+                  •  {`${ing.amount} ${ing.unit} ${ing.name}`.trim()}
+                </Text>
+              ))}
+            </>
+          )}
+          {recipe.tools.length > 0 && (
+            <>
+              <Text style={styles.exportSectionTitle}>Tools</Text>
+              {recipe.tools.map((tool, i) => (
+                <Text key={i} style={styles.exportItem}>•  {tool}</Text>
+              ))}
+            </>
+          )}
+          {recipe.steps.length > 0 && (
+            <>
+              <Text style={styles.exportSectionTitle}>Steps</Text>
+              {recipe.steps.map((step, i) => (
+                <Text key={i} style={styles.exportItem}>{i + 1}. {step}</Text>
+              ))}
+            </>
+          )}
+          {recipe.notes ? (
+            <>
+              <Text style={styles.exportSectionTitle}>Notes</Text>
+              <Text style={styles.exportItem}>{recipe.notes}</Text>
+            </>
+          ) : null}
+          <Text style={styles.exportFooter}>NoteCook</Text>
+        </View>
+      </View>
+
+      {/* ── Floating unit converter button ── */}
+      <TouchableOpacity
+        style={styles.converterFab}
+        onPress={() => setConverterVisible(true)}
+      >
+        <Ionicons name="swap-horizontal" size={24} color={theme.colors.headerText} />
+      </TouchableOpacity>
+
+      {/* ── Unit converter floating card ── */}
+      <Modal visible={converterVisible} transparent animationType="fade">
+        <Pressable style={styles.converterOverlay} onPress={() => setConverterVisible(false)}>
+          <Pressable style={styles.converterCard} onPress={() => {}}>
+            <View style={styles.converterCardHeader}>
+              <Text style={styles.converterCardTitle}>Unit Converter</Text>
+              <TouchableOpacity onPress={() => setConverterVisible(false)}>
+                <Ionicons name="close" size={22} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <UnitConverter />
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -559,5 +764,106 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.secondary,
     marginHorizontal: 8,
+  },
+
+  // Hidden card captured for PNG export
+  exportCardWrap: {
+    position: 'absolute',
+    top: 0,
+    left: -2000,
+    width: 360,
+  },
+  exportCard: {
+    backgroundColor: theme.colors.background,
+    padding: 24,
+  },
+  exportTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: theme.colors.buttonPrimary,
+    marginBottom: 4,
+  },
+  exportCategories: {
+    fontSize: 13,
+    color: theme.colors.tabInactive,
+    marginBottom: 12,
+  },
+  exportPhoto: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    marginBottom: 16,
+    backgroundColor: theme.colors.secondary,
+  },
+  exportSectionTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: theme.colors.buttonSecondary,
+    marginTop: 16,
+    marginBottom: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: theme.colors.secondary,
+    paddingBottom: 4,
+  },
+  exportItem: {
+    fontSize: 14,
+    color: theme.colors.text,
+    marginBottom: 6,
+    lineHeight: 20,
+  },
+  exportFooter: {
+    marginTop: 20,
+    textAlign: 'center',
+    fontSize: 12,
+    color: theme.colors.tabInactive,
+  },
+
+  // Unit converter FAB + floating card
+  converterFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+  },
+  converterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  converterCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '80%',
+    backgroundColor: theme.colors.background,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  converterCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  converterCardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text,
   },
 });

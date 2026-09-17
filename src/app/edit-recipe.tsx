@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { pickRecipePhoto } from '../constants/photo';
 import { addRecipe, updateRecipe } from '../constants/storage';
 import { theme } from '../constants/theme';
 import { Ingredient, Recipe } from '../constants/types';
@@ -106,7 +107,8 @@ export default function EditRecipeScreen() {
   }
 
   async function handlePickPhoto() {
-    // Photo picking will be implemented in the APK build
+    const uri = await pickRecipePhoto();
+    if (uri) setPhoto(uri);
   }
 
   async function handleSave() {

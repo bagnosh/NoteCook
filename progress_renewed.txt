@@ -1,0 +1,98 @@
+NoteCook - Progress Update (renewed session)
+Timestamp: September 17, 2026
+Latest commit: ed2e275 "handed the reins. Stressful but fruitful."
+============================================
+
+COMPLETED THIS SESSION:
+------------------------
+Recipe detail screen visual overhaul:
+- Section titles (Ingredients / Tools / Steps) now sit on marker-highlight
+  PNG strokes (peach / mint / purple), sized to hug the actual measured
+  text via onLayout rather than guessed padding
+- Ingredients / Tools / Steps each wrapped in a semi-transparent
+  "SectionCard" (near-opaque cream, slightly brighter than the paper) to
+  separate content from the paper texture's ruled lines
+- Tools section switched from plain text rows to checkboxes, matching
+  Ingredients / Steps
+- Checkbox "checked" color changed from mint to #D2915A (border + checkmark)
+  everywhere in the recipe screen
+- Recipe photo gets a decorative frame_empty_round.png border, tinted cream
+  (#f8f1e7); photo container made square to match the frame's native aspect
+- Notes section redesigned: dropped an earlier stretched-PNG frame attempt
+  (looked distorted/"smushed"); now a plain rounded card matching
+  SectionCard's shape, solid #D2915A background, peach highlight-stroke
+  title, dark #6F4E37 text for contrast
+- Paper background simplified to a single paper.png image (dropped an
+  earlier 3-slice tiling approach that didn't render reliably) as a fixed,
+  non-scrolling backdrop; repositioned/zoomed via precise pixel
+  measurement so the ruled margin line sits at ~1/5 of screen width
+  instead of ~1/3
+
+Bug fixes found mid-session:
+- Fixed a real regression: an unstable inline style array on the highlight
+  title's text caused the highlight banner images to get stuck at
+  opacity 0 (fade-in transition never settled). Fixed with useMemo +
+  a guarded onLayout state update
+- Renamed 7 uppercase .PNG asset files to lowercase .png for
+  cross-platform safety
+
+Favourites feature (new):
+- Recipe detail's star toggle now actually persists to AsyncStorage via
+  updateRecipe() -- previously it only changed local state and reverted
+  every time you left the screen
+- Added a "Favourites only" toggle to the Search tab (combinable with
+  name/ingredient filters), with a star badge on matching result cards
+- Added a favourites-only toggle (star icon) to the Category Detail
+  screen header
+- Added a "Favourites" toggle to the top-level Categories tab (next to
+  the heading), filtering categories to only those containing favourited
+  recipes, with the badge count switching to reflect favourites
+- Home screen recipe cards now show a star badge for favourited recipes
+
+CURRENT FEATURE STATUS:
+------------------------
+✅ Add / Edit / Delete recipes
+✅ Categories & filtering (case-insensitive, multi-add via comma)
+✅ Search by name or ingredient (with ALL/ANY toggle)
+✅ Favourites: persisted, filterable on Search / Categories / Category Detail
+✅ Alphabetical sorting on home screen
+✅ Long-press multi-select with bulk delete
+✅ URL import (Spoonacular + Groq AI enrichment + photo)
+✅ Plain text export
+✅ Settings screen (Spoonacular, Groq, Anthropic API key storage)
+✅ Splash animation (chef + logo + paper background)
+✅ App icon (SVG, notebook + spatula)
+✅ Recipe detail screen redesign (highlights, section cards, notes card,
+   paper background, tinted photo frame)
+⏳ Export as PNG / HTML / PDF (next up)
+⏳ Camera picker / local photos (deferred to APK build)
+⏳ Voice commands (deferred to APK build)
+⏳ Custom flash card tab bar (pending hand-drawn PNG artwork)
+⬜ Sorted recipe card views (alphabetical / newest-to-oldest) -- requested,
+   explicitly deferred to a later session
+⬜ APK build for Galaxy A25 5G
+
+KNOWN ISSUES / NOTES:
+----------------------
+- All of this session's visual work was verified in the Expo web preview
+  at a mobile-sized viewport (aspect ratio close to the Galaxy A25's), not
+  yet re-confirmed on the physical device for this latest round -- worth a
+  quick pass before treating it as fully final
+- The paper background's "line at ~1/5 of screen width" positioning was
+  tuned against precise pixel measurement in the web preview; past
+  rounds showed web vs. native discrepancies, so a device check is
+  worthwhile
+- Camera picker still deferred: local photo URI persistence doesn't work
+  in Expo Go; will work in APK build
+- Groq model: using groq/compound-mini (llama3-8b-8192 decommissioned)
+- Spoonacular free tier: 150 requests/day; bundled key included,
+  personal key optional in Settings
+- Recurring workflow tip: always use `npx expo start --clear`
+  after SDK or dependency changes
+
+NEXT PRIORITIES:
+-----------------
+1. Confirm this session's visual changes on the actual Galaxy A25 device
+2. Implement recipe list sorting (alphabetical / newest-to-oldest)
+3. Export as PNG / HTML
+4. Final UI touchups and brainstorm session

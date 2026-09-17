@@ -1,100 +1,102 @@
+import { useFonts } from 'expo-font';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import OutlinedImage from './OutlinedImage';
 import { theme } from '../constants/theme';
 
-const CHEF_DURATION = 1200;
-const CHEF_DELAY = 300;
+// Chef slide-in + logo reveal both start together after this delay.
+const INTRO_DELAY = 300;
+// Animated.spring has no fixed duration -- this is an estimate of how long
+// it takes to settle, used only to time the hold/exit that follows.
+const CHEF_SETTLE_ESTIMATE = 1200;
 const WIPE_DURATION = 700;
-const WIPE_DELAY = 200; // minimal delay after chef lands
-const HOLD_DURATION = 500;
-const EXIT_DURATION = 800;
+const HOLD_DURATION = 300;
+const EXIT_FADE_DURATION = 800;
 const DOT_INTERVAL = 350;
+const DOT_STEPS = 3;
+const FINISH_HOLD = 350;
+
+const CHEF_SIZE = 220;
+const CHEF_STROKE_WIDTH = 10;
 
 type Props = { onFinish: () => void };
 
 export default function SplashAnimation({ onFinish }: Props) {
   const chefY = useRef(new Animated.Value(-350)).current;
   const wipeWidth = useRef(new Animated.Value(0)).current;
-  const exitY = useRef(new Animated.Value(0)).current;
   const exitOpacity = useRef(new Animated.Value(1)).current;
   const bgOpacity = useRef(new Animated.Value(0)).current;
+  const loadingOpacity = useRef(new Animated.Value(0)).current;
   const [dots, setDots] = useState(0);
   const [showLoading, setShowLoading] = useState(false);
+  const [fontsLoaded] = useFonts({
+    Fredoka: require('../../assets/fonts/Fredoka-Variable.ttf'),
+  });
 
   useEffect(() => {
-    const totalIntroTime = CHEF_DELAY + CHEF_DURATION + WIPE_DELAY + WIPE_DURATION + HOLD_DURATION;
+    let dotInterval: ReturnType<typeof setInterval> | null = null;
+    let finishTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // Step 1: Chef floats in
-    Animated.sequence([
-      Animated.delay(CHEF_DELAY),
+    // Chef slide-in and logo reveal start at the same time.
+    const startTimer = setTimeout(() => {
       Animated.spring(chefY, {
         toValue: 0,
         friction: 8,
         tension: 40,
         useNativeDriver: true,
-      }),
-    ]).start();
+      }).start();
 
-    // Step 2: Logo wipes in shortly after chef lands
-    const wipeTimer = setTimeout(() => {
       Animated.timing(wipeWidth, {
         toValue: 1,
         duration: WIPE_DURATION,
         useNativeDriver: false,
       }).start();
-    }, CHEF_DELAY + CHEF_DURATION + WIPE_DELAY);
+    }, INTRO_DELAY);
 
-    // Step 3: After hold, exit animation — float up + wipe out + bg fade in
+    // Hold both in place, then fade everything out into the paper background.
+    const exitStart = INTRO_DELAY + CHEF_SETTLE_ESTIMATE + HOLD_DURATION;
     const exitTimer = setTimeout(() => {
-      // Reverse wipe (logo disappears right to left)
-      Animated.timing(wipeWidth, {
+      Animated.timing(exitOpacity, {
         toValue: 0,
-        duration: EXIT_DURATION,
-        useNativeDriver: false,
+        duration: EXIT_FADE_DURATION,
+        useNativeDriver: true,
       }).start();
 
-      // Chef + logo float upward and fade
-      Animated.parallel([
-        Animated.timing(exitY, {
-          toValue: -500,
-          duration: EXIT_DURATION,
-          useNativeDriver: true,
-        }),
-        Animated.timing(exitOpacity, {
-          toValue: 0,
-          duration: EXIT_DURATION * 0.8,
+      Animated.timing(bgOpacity, {
+        toValue: 1,
+        duration: EXIT_FADE_DURATION,
+        useNativeDriver: true,
+      }).start();
+
+      setShowLoading(true);
+      Animated.sequence([
+        // Let the chef + logo fade most of the way out first, so the
+        // loading text (positioned higher up, near the chef) doesn't
+        // visibly double-expose with it mid-crossfade.
+        Animated.delay(EXIT_FADE_DURATION * 0.5),
+        Animated.timing(loadingOpacity, {
+          toValue: 1,
+          duration: 200,
           useNativeDriver: true,
         }),
       ]).start();
 
-      // Background fades in
-      Animated.timing(bgOpacity, {
-        toValue: 1,
-        duration: EXIT_DURATION,
-        useNativeDriver: true,
-      }).start();
-
-      // Show loading text
-      setShowLoading(true);
-
-      // Dot animation
       let dotCount = 0;
-      const dotInterval = setInterval(() => {
-        dotCount = (dotCount + 1) % 4;
+      dotInterval = setInterval(() => {
+        dotCount += 1;
         setDots(dotCount);
+        if (dotCount >= DOT_STEPS) {
+          clearInterval(dotInterval!);
+          finishTimer = setTimeout(onFinish, FINISH_HOLD);
+        }
       }, DOT_INTERVAL);
-
-      // Finish after exit completes
-      setTimeout(() => {
-        clearInterval(dotInterval);
-        onFinish();
-      }, EXIT_DURATION + 400);
-
-    }, totalIntroTime);
+    }, exitStart);
 
     return () => {
-      clearTimeout(wipeTimer);
+      clearTimeout(startTimer);
       clearTimeout(exitTimer);
+      if (dotInterval) clearInterval(dotInterval);
+      if (finishTimer) clearTimeout(finishTimer);
     };
   }, []);
 
@@ -108,35 +110,31 @@ export default function SplashAnimation({ onFinish }: Props) {
   return (
     <View style={styles.container}>
 
-      {/* Paper background fades in during exit */}
-      <Animated.Image
-        source={require('../../assets/images/paper.png')}
-        style={[styles.bgImage, { opacity: bgOpacity }]}
-        resizeMode="cover"
-      />
+      {/* Paper background fades in as the chef + logo fade out */}
+      <View style={styles.bgWrap} pointerEvents="none">
+        <Animated.Image
+          source={require('../../assets/images/paper.png')}
+          style={[styles.bgImage, { opacity: bgOpacity }]}
+          resizeMode="cover"
+        />
+      </View>
 
-      {/* Chef + logo — float out together */}
-      <Animated.View
-        style={[
-          styles.contentWrapper,
-          {
-            transform: [{ translateY: exitY }],
-            opacity: exitOpacity,
-          }
-        ]}
-      >
-        {/* Chef */}
+      {/* Chef + logo -- fade out together, no more float/wipe-out */}
+      <Animated.View style={[styles.contentWrapper, { opacity: exitOpacity }]}>
+        {/* Chef, outlined in white */}
         <Animated.View style={{ transform: [{ translateY: chefY }] }}>
-          <Image
+          <OutlinedImage
             source={require('../../assets/images/Logo-image.png')}
-            style={styles.chef}
-            resizeMode="contain"
+            width={CHEF_SIZE}
+            height={CHEF_SIZE}
+            strokeWidth={CHEF_STROKE_WIDTH}
+            strokeColor="#FFFFFF"
           />
         </Animated.View>
 
         {/* Wipe-in logo */}
         <View style={styles.logoWrapper}>
-          <Image
+          <Animated.Image
             source={require('../../assets/images/notecook_logo.png')}
             style={styles.logo}
             resizeMode="contain"
@@ -147,10 +145,10 @@ export default function SplashAnimation({ onFinish }: Props) {
         </View>
       </Animated.View>
 
-      {/* Loading text — appears at logo position during exit */}
+      {/* Loading text -- appears immediately once the exit fade starts */}
       {showLoading && (
-        <Animated.View style={[styles.loadingWrapper, { opacity: bgOpacity }]}>
-          <Text style={styles.loadingText}>
+        <Animated.View style={[styles.loadingWrapper, { opacity: loadingOpacity }]}>
+          <Text style={[styles.loadingText, fontsLoaded && { fontFamily: 'Fredoka' }]}>
             loading<Text style={styles.dots}>{dotsText}</Text>
           </Text>
         </Animated.View>
@@ -168,22 +166,24 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingBottom: 180,
   },
-  bgImage: {
+  bgWrap: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    width: '100%',
-    height: '100%',
+    overflow: 'hidden',
+  },
+  bgImage: {
+    position: 'absolute',
+    top: '-15%',
+    left: '-2.5%',
+    width: '130%',
+    height: '130%',
   },
   contentWrapper: {
     alignItems: 'center',
     gap: 16,
-  },
-  chef: {
-    width: 220,
-    height: 220,
   },
   logoWrapper: {
     width: 280,
@@ -204,14 +204,16 @@ const styles = StyleSheet.create({
   },
   loadingWrapper: {
     position: 'absolute',
-    bottom: 180,
+    top: '33%',
+    left: 0,
+    right: 0,
     alignItems: 'center',
   },
   loadingText: {
-    fontSize: 18,
+    fontSize: 22,
+    fontWeight: '700',
     color: theme.colors.text,
-    fontStyle: 'italic',
-    opacity: 0.6,
+    opacity: 0.85,
   },
   dots: {
     color: theme.colors.buttonSecondary,

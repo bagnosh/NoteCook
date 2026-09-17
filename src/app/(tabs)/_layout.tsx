@@ -42,6 +42,15 @@ export default function Layout() {
         }}
       />
       <Tabs.Screen
+        name="convert"
+        options={{
+          title: 'Convert',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="swap-horizontal" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
