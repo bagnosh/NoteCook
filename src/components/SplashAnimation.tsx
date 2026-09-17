@@ -128,7 +128,7 @@ export default function SplashAnimation({ onFinish }: Props) {
         {/* Chef */}
         <Animated.View style={{ transform: [{ translateY: chefY }] }}>
           <Image
-            source={require('../../assets/images/chef.png')}
+            source={require('../../assets/images/Logo-image.png')}
             style={styles.chef}
             resizeMode="contain"
           />

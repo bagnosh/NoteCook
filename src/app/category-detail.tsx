@@ -17,6 +17,9 @@ export default function CategoryDetailScreen() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [renameVisible, setRenameVisible] = useState(false);
   const [newName, setNewName] = useState(category);
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
+
+  const visibleRecipes = favouritesOnly ? recipes.filter(r => r.favourite) : recipes;
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +79,13 @@ export default function CategoryDetailScreen() {
           <Ionicons name="arrow-back" size={22} color={theme.colors.headerText} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{category}</Text>
+        <TouchableOpacity onPress={() => setFavouritesOnly(!favouritesOnly)} style={styles.headerBtn}>
+          <Ionicons
+            name={favouritesOnly ? 'star' : 'star-outline'}
+            size={20}
+            color={theme.colors.headerText}
+          />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => setRenameVisible(true)} style={styles.headerBtn}>
           <Ionicons name="pencil" size={20} color={theme.colors.headerText} />
         </TouchableOpacity>
@@ -85,13 +95,15 @@ export default function CategoryDetailScreen() {
       </View>
 
       {/* Recipe list */}
-      {recipes.length === 0 ? (
+      {visibleRecipes.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyText}>No recipes in this category.</Text>
+          <Text style={styles.emptyText}>
+            {favouritesOnly ? 'No favourite recipes in this category.' : 'No recipes in this category.'}
+          </Text>
         </View>
       ) : (
         <FlatList
-          data={recipes}
+          data={visibleRecipes}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
@@ -102,7 +114,12 @@ export default function CategoryDetailScreen() {
                 params: { recipe: JSON.stringify(item) }
               })}
             >
-              <Text style={styles.cardTitle}>{item.title}</Text>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle}>{item.title}</Text>
+                {item.favourite && (
+                  <Ionicons name="star" size={15} color={theme.colors.buttonSecondary} />
+                )}
+              </View>
             </TouchableOpacity>
           )}
         />
@@ -172,6 +189,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardTitle: { fontSize: 17, fontWeight: '600', color: theme.colors.text },
   modalOverlay: {
     flex: 1,

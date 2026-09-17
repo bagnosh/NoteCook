@@ -46,7 +46,12 @@ export default function HomeScreen() {
                 params: { recipe: JSON.stringify(item) }
               })}
             >
-              <Text style={styles.cardTitle}>{item.title}</Text>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle}>{item.title}</Text>
+                {item.favourite && (
+                  <Ionicons name="star" size={16} color={theme.colors.buttonSecondary} />
+                )}
+              </View>
               <View style={styles.pillRow}>
                 {item.categories.map((cat, i) => (
                   <View key={i} style={styles.pill}>
@@ -139,6 +144,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     gap: 8,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   cardTitle: {
     fontSize: 18,

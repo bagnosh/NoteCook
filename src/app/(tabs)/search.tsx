@@ -17,6 +17,7 @@ export default function SearchScreen() {
   const [ingredientInput, setIngredientInput] = useState('');
   const [ingredientTags, setIngredientTags] = useState<string[]>([]);
   const [matchAll, setMatchAll] = useState(true);
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,10 +58,13 @@ export default function SearchScreen() {
       }
     }
 
-    return nameMatch && ingredientMatch;
+    // Favourites filter
+    const favMatch = !favouritesOnly || recipe.favourite;
+
+    return nameMatch && ingredientMatch && favMatch;
   });
 
-  const hasFilters = nameQuery.trim() !== '' || ingredientTags.length > 0;
+  const hasFilters = nameQuery.trim() !== '' || ingredientTags.length > 0 || favouritesOnly;
 
   return (
     <View style={styles.wrapper}>
@@ -101,6 +105,21 @@ export default function SearchScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Favourites-only toggle */}
+      <TouchableOpacity
+        style={[styles.favBtn, favouritesOnly && styles.favBtnActive]}
+        onPress={() => setFavouritesOnly(!favouritesOnly)}
+      >
+        <Ionicons
+          name={favouritesOnly ? 'star' : 'star-outline'}
+          size={16}
+          color={favouritesOnly ? theme.colors.headerText : theme.colors.buttonPrimary}
+        />
+        <Text style={[styles.favBtnText, favouritesOnly && styles.favBtnTextActive]}>
+          Favourites only
+        </Text>
+      </TouchableOpacity>
 
       {/* Ingredient tags */}
       {ingredientTags.length > 0 && (
@@ -160,7 +179,12 @@ export default function SearchScreen() {
                 params: { recipe: JSON.stringify(item) }
               })}
             >
-              <Text style={styles.cardTitle}>{item.title}</Text>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle}>{item.title}</Text>
+                {item.favourite && (
+                  <Ionicons name="star" size={15} color={theme.colors.buttonSecondary} />
+                )}
+              </View>
               {item.categories.length > 0 && (
                 <View style={styles.pillRow}>
                   {item.categories.map((cat, i) => (
@@ -225,6 +249,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.text,
   },
+  favBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.buttonPrimary,
+    marginBottom: 10,
+  },
+  favBtnActive: {
+    backgroundColor: theme.colors.buttonPrimary,
+  },
+  favBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.buttonPrimary,
+  },
+  favBtnTextActive: {
+    color: theme.colors.headerText,
+  },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -283,6 +330,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     gap: 8,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   cardTitle: {
     fontSize: 17,

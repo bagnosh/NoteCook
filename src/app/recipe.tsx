@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import {
   Image, Modal, Pressable,
   ScrollView, StyleSheet,
@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { deleteRecipe } from '../constants/storage';
+import { deleteRecipe, updateRecipe } from '../constants/storage';
 import { theme } from '../constants/theme';
 import { Recipe } from '../constants/types';
 
@@ -19,7 +19,7 @@ function Checkbox({ label, strikethrough }: { label: string; strikethrough?: boo
   return (
     <TouchableOpacity style={styles.checkboxRow} onPress={() => setChecked(!checked)}>
       <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-        {checked && <Ionicons name="checkmark" size={14} color={theme.colors.highlight} />}
+        {checked && <Ionicons name="checkmark" size={14} color={theme.colors.buttonSecondary} />}
       </View>
       <Text style={[styles.checkboxLabel, checked && styles.checkboxLabelChecked]}>
         {label}
@@ -33,6 +33,86 @@ function CategoryPill({ label }: { label: string }) {
   return (
     <View style={styles.pill}>
       <Text style={styles.pillText}>{label}</Text>
+    </View>
+  );
+}
+
+// ── Section title with marker-highlight background ──
+const highlightImages = {
+  ingredients: require('@/assets/images/highlight_orange.png'),
+  tools: require('@/assets/images/highlight_mint.png'),
+  steps: require('@/assets/images/highlight_purple.png'),
+  notes: require('@/assets/images/highlight_orange.png'),
+};
+
+const HIGHLIGHT_PAD_X = 10;
+const HIGHLIGHT_PAD_Y = 6;
+
+function HighlightTitle({
+  label,
+  highlight,
+  textColor,
+}: {
+  label: string;
+  highlight: keyof typeof highlightImages;
+  textColor?: string;
+}) {
+  const [textSize, setTextSize] = useState<{ width: number; height: number } | null>(null);
+  const imageStyle = useMemo(() => {
+    if (!textSize) return null;
+    return [
+      styles.highlightImage,
+      {
+        width: textSize.width + HIGHLIGHT_PAD_X * 2,
+        height: textSize.height + HIGHLIGHT_PAD_Y * 2,
+        left: -HIGHLIGHT_PAD_X,
+        top: -HIGHLIGHT_PAD_Y,
+      },
+    ];
+  }, [textSize]);
+  const textStyle = useMemo(
+    () => (textColor ? [styles.highlightText, { color: textColor }] : styles.highlightText),
+    [textColor]
+  );
+  return (
+    <View style={styles.highlightWrap}>
+      {imageStyle && (
+        <Image source={highlightImages[highlight]} style={imageStyle} resizeMode="stretch" />
+      )}
+      <Text
+        style={textStyle}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          setTextSize((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+// ── Semi-transparent card wrapping a section, to separate it from the paper texture ──
+function SectionCard({ children }: { children: ReactNode }) {
+  return <View style={styles.sectionCard}>{children}</View>;
+}
+
+// ── Notes card, same shape as a SectionCard with its own background color ──
+function NotesBox({ children }: { children: ReactNode }) {
+  return <View style={[styles.sectionCard, styles.notesCard]}>{children}</View>;
+}
+
+// ── Item grid: single column, or two columns once there are enough items ──
+function ItemGrid({ items, twoColumnThreshold = 5 }: { items: ReactNode[]; twoColumnThreshold?: number }) {
+  const twoColumn = items.length >= twoColumnThreshold;
+  if (!twoColumn) {
+    return <View>{items}</View>;
+  }
+  return (
+    <View style={styles.itemGrid}>
+      {items.map((item, i) => (
+        <View key={i} style={styles.itemGridCell}>{item}</View>
+      ))}
     </View>
   );
 }
@@ -51,7 +131,14 @@ export default function RecipeDetailScreen() {
   if (recipe.photo) {
     recipe.photo = decodeURIComponent(recipe.photo);
   }
+  recipe.favourite = favourite;
   console.log('Photo URI:', recipe.photo);
+
+  async function handleToggleFavourite() {
+    const next = !favourite;
+    setFavourite(next);
+    await updateRecipe({ ...recipe, favourite: next });
+  }
 
   async function handleExportText() {
     setMenuVisible(false);
@@ -119,7 +206,7 @@ export default function RecipeDetailScreen() {
             <Ionicons name="arrow-back" size={22} color={theme.colors.headerText} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{recipe.title}</Text>
-          <TouchableOpacity onPress={() => setFavourite(!favourite)}>
+          <TouchableOpacity onPress={handleToggleFavourite}>
             <Ionicons
               name={favourite ? 'star' : 'star-outline'}
               size={22}
@@ -140,52 +227,85 @@ export default function RecipeDetailScreen() {
       </View>
 
       {/* ── Scrollable Body ── */}
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+      <View style={styles.body}>
+        <View style={[styles.paperBackground, { pointerEvents: 'none' }]}>
+          <Image
+            source={require('@/assets/images/paper.png')}
+            style={styles.paperBackgroundImage}
+            resizeMode="cover"
+          />
+        </View>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.bodyContent}>
+
+        <View style={styles.contentInner}>
 
         {/* Photo */}
         {recipe.photo && (
-          <Image
-            source={{ uri: recipe.photo }}
-            style={styles.photo}
-            resizeMode="cover"
-            onError={(e) => console.log('Image error:', e.nativeEvent.error)}
-          />
+          <View style={styles.photoWrap}>
+            <Image
+              source={{ uri: recipe.photo }}
+              style={styles.photo}
+              resizeMode="cover"
+              onError={(e) => console.log('Image error:', e.nativeEvent.error)}
+            />
+            <Image
+              source={require('@/assets/images/frame_empty_round.png')}
+              style={[styles.photoFrame, { pointerEvents: 'none' }]}
+              resizeMode="stretch"
+              tintColor="#f8f1e7"
+            />
+          </View>
         )}
 
-        {/* Ingredients + Tools */}
-        <View style={styles.twoCol}>
-          <View style={styles.col}>
-            <Text style={styles.sectionTitle}>Ingredients:</Text>
-            {recipe.ingredients.map((ing, i) => (
-              <Checkbox
-                key={i}
-                label={`${ing.amount} ${ing.unit} ${ing.name}`.trim()}
-              />
-            ))}
-          </View>
-          <View style={styles.col}>
-            <Text style={styles.sectionTitle}>Tools:</Text>
-            {recipe.tools.map((tool, i) => (
-              <Text key={i} style={styles.toolItem}>{tool}</Text>
-            ))}
-          </View>
-        </View>
+        {/* Ingredients */}
+        {recipe.ingredients.length > 0 && (
+          <SectionCard>
+            <HighlightTitle label="Ingredients" highlight="ingredients" />
+            <ItemGrid
+              items={recipe.ingredients.map((ing, i) => (
+                <Checkbox
+                  key={i}
+                  label={`${ing.amount} ${ing.unit} ${ing.name}`.trim()}
+                />
+              ))}
+            />
+          </SectionCard>
+        )}
+
+        {/* Tools */}
+        {recipe.tools.length > 0 && (
+          <SectionCard>
+            <HighlightTitle label="Tools" highlight="tools" />
+            <ItemGrid
+              items={recipe.tools.map((tool, i) => (
+                <Checkbox key={i} label={tool} />
+              ))}
+            />
+          </SectionCard>
+        )}
 
         {/* Steps */}
-        <Text style={styles.sectionTitle}>Steps:</Text>
-        {recipe.steps.map((step, i) => (
-          <Checkbox key={i} label={`${i + 1}. ${step}`} />
-        ))}
+        {recipe.steps.length > 0 && (
+          <SectionCard>
+            <HighlightTitle label="Steps" highlight="steps" />
+            {recipe.steps.map((step, i) => (
+              <Checkbox key={i} label={`${i + 1}. ${step}`} />
+            ))}
+          </SectionCard>
+        )}
 
         {/* Notes */}
         {recipe.notes ? (
-          <>
-            <Text style={styles.sectionTitle}>Notes:</Text>
-            <Text style={styles.notes}>{recipe.notes}</Text>
-          </>
+          <NotesBox>
+            <HighlightTitle label="Notes" highlight="notes" textColor="#6F4E37" />
+            <Text style={styles.notesText}>{recipe.notes}</Text>
+          </NotesBox>
         ) : null}
 
-      </ScrollView>
+        </View>
+
+        </ScrollView>
+      </View>
 
       {/* ── Menu Modal ── */}
       <Modal visible={menuVisible} transparent animationType="fade">
@@ -282,33 +402,86 @@ const styles = StyleSheet.create({
 
   // Body
   body: { flex: 1 },
+  paperBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  paperBackgroundImage: {
+    position: 'absolute',
+    top: '-15%',
+    left: '-2.5%',
+    width: '130%',
+    height: '130%',
+  },
+  scrollView: { flex: 1 },
   bodyContent: {
+    flexGrow: 1,
+  },
+  contentInner: {
     padding: 16,
     gap: 8,
   },
+  photoWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    marginBottom: 16,
+  },
   photo: {
     width: '100%',
-    aspectRatio: 4 / 3,
+    height: '100%',
     borderRadius: 10,
-    marginBottom: 16,
     backgroundColor: theme.colors.secondary,
   },
-
-  // Two column layout
-  twoCol: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 16,
+  photoFrame: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  col: { flex: 1 },
+
+  // Section card (semi-transparent, sits over the paper texture)
+  sectionCard: {
+    backgroundColor: 'rgba(252, 248, 243, 0.94)',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
 
   // Section titles
-  sectionTitle: {
+  highlightWrap: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    marginTop: 8,
+  },
+  highlightImage: {
+    position: 'absolute',
+  },
+  highlightText: {
     fontSize: 16,
     fontWeight: 'bold',
     color: theme.colors.text,
-    marginBottom: 8,
-    marginTop: 4,
+  },
+
+  // Item grid (single or two columns)
+  itemGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  itemGridCell: {
+    width: '48%',
   },
 
   // Checkbox
@@ -329,7 +502,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   checkboxChecked: {
-    borderColor: theme.colors.highlight,
+    borderColor: theme.colors.buttonSecondary,
   },
   checkboxLabel: {
     flex: 1,
@@ -341,19 +514,14 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  // Tools
-  toolItem: {
-    fontSize: 14,
-    color: theme.colors.text,
-    marginBottom: 8,
-    textAlign: 'right',
+  // Notes card
+  notesCard: {
+    backgroundColor: '#D2915A',
   },
-
-  // Notes
-  notes: {
+  notesText: {
     fontSize: 14,
-    color: theme.colors.text,
-    opacity: 0.8,
+    color: '#6F4E37',
+    opacity: 0.9,
     lineHeight: 20,
   },
 
